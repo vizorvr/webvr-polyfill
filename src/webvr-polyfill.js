@@ -33,7 +33,7 @@ function WebVRPolyfill() {
   this.nativeWebVRAvailable = this.isWebVRAvailable();
   this.nativeLegacyWebVRAvailable = this.isDeprecatedWebVRAvailable();
 
-  window.vizorNativeWebVRAvailable = this.nativeWebVRAvailable;
+  window.vizorNativeWebVRAvailable = this.nativeWebVRAvailable || this.nativeLegacyWebVRAvailable;
   if (!this.nativeLegacyWebVRAvailable) {
     if (!this.nativeWebVRAvailable) {
       this.enablePolyfill();
