@@ -107,10 +107,14 @@ RotateInstructions.prototype.show = function(parent) {
     s.marginLeft = '25%';
     s.marginTop = '25%';
   }
+
+  document.body.dispatchEvent(new CustomEvent('VRManInstructionsShown'))
 };
 
 RotateInstructions.prototype.hide = function() {
   this.overlay.style.display = 'none';
+
+  document.body.dispatchEvent(new CustomEvent('VRManInstructionsHidden'))
 };
 
 RotateInstructions.prototype.showTemporarily = function(ms, parent) {
