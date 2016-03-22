@@ -1075,6 +1075,7 @@ var nextDisplayId = 1000;
  * The base class for all VR displays.
  */
 function VRDisplay() {
+  this.isPolyfilled = true;
   this.displayId = nextDisplayId++;
   this.displayName = 'webvr-polyfill displayName';
 
@@ -1123,6 +1124,10 @@ VRDisplay.prototype.wrapForFullscreen = function(element) {
   if (!this.fullscreenWrapper_) {
     this.fullscreenWrapper_ = document.createElement('div');
     this.fullscreenWrapper_.classList.add('webvr-polyfill-fullscreen-wrapper');
+    // Make sure the wrapper takes the full screen. Without this, there is a
+    // white line at the bottom.
+    this.fullscreenWrapper_.style.width = '100%';
+    this.fullscreenWrapper_.style.height = '100%';
   }
 
   if (this.fullscreenElement_ == element)
@@ -1277,14 +1282,14 @@ VRDisplay.prototype.addFullscreenListeners_ = function(element, changeHandler, e
   if (changeHandler) {
     element.addEventListener('fullscreenchange', changeHandler, false);
     element.addEventListener('webkitfullscreenchange', changeHandler, false);
-    element.addEventListener('mozfullscreenchange', changeHandler, false);
+    document.addEventListener('mozfullscreenchange', changeHandler, false);
     element.addEventListener('msfullscreenchange', changeHandler, false);
   }
 
   if (errorHandler) {
     element.addEventListener('fullscreenerror', errorHandler, false);
     element.addEventListener('webkitfullscreenerror', errorHandler, false);
-    element.addEventListener('mozfullscreenerror', errorHandler, false);
+    document.addEventListener('mozfullscreenerror', errorHandler, false);
     element.addEventListener('msfullscreenerror', errorHandler, false);
   }
 };
@@ -1299,7 +1304,7 @@ VRDisplay.prototype.removeFullscreenListeners_ = function() {
     var changeHandler = this.fullscreenChangeHandler_;
     element.removeEventListener('fullscreenchange', changeHandler, false);
     element.removeEventListener('webkitfullscreenchange', changeHandler, false);
-    element.removeEventListener('mozfullscreenchange', changeHandler, false);
+    document.removeEventListener('mozfullscreenchange', changeHandler, false);
     element.removeEventListener('msfullscreenchange', changeHandler, false);
   }
 
@@ -1307,7 +1312,7 @@ VRDisplay.prototype.removeFullscreenListeners_ = function() {
     var errorHandler = this.fullscreenErrorHandler_;
     element.removeEventListener('fullscreenerror', errorHandler, false);
     element.removeEventListener('webkitfullscreenerror', errorHandler, false);
-    element.removeEventListener('mozfullscreenerror', errorHandler, false);
+    document.removeEventListener('mozfullscreenerror', errorHandler, false);
     element.removeEventListener('msfullscreenerror', errorHandler, false);
   }
 
@@ -1341,6 +1346,7 @@ VRDisplay.prototype.getEyeParameters = function(whichEye) {
  * The base class for all VR devices. (Deprecated)
  */
 function VRDevice() {
+  this.isPolyfilled = true;
   this.hardwareUnitId = 'webvr-polyfill hardwareUnitId';
   this.deviceId = 'webvr-polyfill deviceId';
   this.deviceName = 'webvr-polyfill deviceName';
@@ -1426,11 +1432,28 @@ function CardboardDistorter(gl) {
   this.bufferWidth = gl.drawingBufferWidth;
   this.bufferHeight = gl.drawingBufferHeight;
 
+  // Patching support
   this.realBindFramebuffer = gl.bindFramebuffer;
+  this.realEnable = gl.enable;
+  this.realDisable = gl.disable;
+  this.realColorMask = gl.colorMask;
+  this.realClearColor = gl.clearColor;
+  this.realViewport = gl.viewport;
   this.realCanvasWidth = Object.getOwnPropertyDescriptor(gl.canvas.__proto__, 'width');
   this.realCanvasHeight = Object.getOwnPropertyDescriptor(gl.canvas.__proto__, 'height');
 
   this.isPatched = false;
+
+  // State tracking
+  this.lastBoundFramebuffer = null;
+  this.cullFace = false;
+  this.depthTest = false;
+  this.blend = false;
+  this.scissorTest = false;
+  this.stencilTest = false;
+  this.viewport = [0, 0, 0, 0];
+  this.colorMask = [true, true, true, true];
+  this.clearColor = [0, 0, 0, 0];
 
   this.attribs = {
     position: 0,
@@ -1461,11 +1484,11 @@ function CardboardDistorter(gl) {
     this.stencilBuffer = gl.createRenderbuffer();
   }
 
+  this.patch();
+
   this.onResize();
 
   this.cardboardUI = new CardboardUI(gl);
-
-  this.patch();
 };
 
 /**
@@ -1504,11 +1527,6 @@ CardboardDistorter.prototype.onResize = function() {
   var self = this;
 
   var glState = [
-    gl.SCISSOR_TEST,
-    gl.COLOR_WRITEMASK,
-    gl.VIEWPORT,
-    gl.COLOR_CLEAR_VALUE,
-    gl.FRAMEBUFFER_BINDING,
     gl.RENDERBUFFER_BINDING,
     gl.TEXTURE_BINDING_2D, gl.TEXTURE0
   ];
@@ -1518,10 +1536,12 @@ CardboardDistorter.prototype.onResize = function() {
     // after that because we're overwriting the same area every frame.
     self.realBindFramebuffer.call(gl, gl.FRAMEBUFFER, null);
 
-    gl.disable(gl.SCISSOR_TEST);
-    gl.colorMask(true, true, true, true);
-    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
-    gl.clearColor(0, 0, 0, 1);
+    // Put things in a good state
+    if (self.scissorTest) { self.realDisable.call(gl, gl.SCISSOR_TEST); }
+    self.realColorMask.call(gl, true, true, true, true);
+    self.realViewport.call(gl, 0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    self.realClearColor.call(gl, 0, 0, 0, 1);
+
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     // Now bind and resize the fake backbuffer
@@ -1560,6 +1580,14 @@ CardboardDistorter.prototype.onResize = function() {
     if (!gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) {
       console.error('Framebuffer incomplete!');
     }
+
+    self.realBindFramebuffer.call(gl, gl.FRAMEBUFFER, self.lastBoundFramebuffer);
+
+    if (self.scissorTest) { self.realEnable.call(gl, gl.SCISSOR_TEST); }
+
+    self.realColorMask.apply(gl, self.colorMask);
+    self.realViewport.apply(gl, self.viewport);
+    self.realClearColor.apply(gl, self.clearColor);
   });
 
   if (this.cardboardUI) {
@@ -1574,6 +1602,7 @@ CardboardDistorter.prototype.patch = function() {
 
   var self = this;
   var canvas = this.gl.canvas;
+  var gl = this.gl;
 
   canvas.width = Util.getScreenWidth() * this.bufferScale;
   canvas.height = Util.getScreenHeight() * this.bufferScale;
@@ -1602,10 +1631,72 @@ CardboardDistorter.prototype.patch = function() {
     }
   });
 
+  this.lastBoundFramebuffer = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+
+  if (this.lastBoundFramebuffer == null) {
+    this.lastBoundFramebuffer = this.framebuffer;
+    this.gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
+  }
+
   this.gl.bindFramebuffer = function(target, framebuffer) {
+    self.lastBoundFramebuffer = framebuffer ? framebuffer : self.framebuffer;
     // Silently make calls to bind the default framebuffer bind ours instead.
-    self.realBindFramebuffer.call(self.gl, target,
-        framebuffer ? framebuffer : self.framebuffer);
+    self.realBindFramebuffer.call(gl, target, self.lastBoundFramebuffer);
+  };
+
+  this.cullFace = gl.getParameter(gl.CULL_FACE);
+  this.depthTest = gl.getParameter(gl.DEPTH_TEST);
+  this.blend = gl.getParameter(gl.BLEND);
+  this.scissorTest = gl.getParameter(gl.SCISSOR_TEST);
+  this.stencilTest = gl.getParameter(gl.STENCIL_TEST);
+
+  gl.enable = function(pname) {
+    switch(pname) {
+      case gl.CULL_FACE: self.cullFace = true; break;
+      case gl.DEPTH_TEST: self.depthTest = true; break;
+      case gl.BLEND: self.blend = true; break;
+      case gl.SCISSOR_TEST: self.scissorTest = true; break;
+      case gl.STENCIL_TEST: self.stencilTest = true; break;
+    }
+    self.realEnable.call(gl, pname);
+  };
+
+  gl.disable = function(pname) {
+    switch(pname) {
+      case gl.CULL_FACE: self.cullFace = false; break;
+      case gl.DEPTH_TEST: self.depthTest = false; break;
+      case gl.BLEND: self.blend = false; break;
+      case gl.SCISSOR_TEST: self.scissorTest = false; break;
+      case gl.STENCIL_TEST: self.stencilTest = false; break;
+    }
+    self.realDisable.call(gl, pname);
+  };
+
+  this.colorMask = gl.getParameter(gl.COLOR_WRITEMASK);
+  gl.colorMask = function(r, g, b, a) {
+    self.colorMask[0] = r;
+    self.colorMask[1] = g;
+    self.colorMask[2] = b;
+    self.colorMask[3] = a;
+    self.realColorMask.call(gl, r, g, b, a);
+  };
+
+  this.clearColor = gl.getParameter(gl.COLOR_CLEAR_VALUE);
+  gl.clearColor = function(r, g, b, a) {
+    self.clearColor[0] = r;
+    self.clearColor[1] = g;
+    self.clearColor[2] = b;
+    self.clearColor[3] = a;
+    self.realClearColor.call(gl, r, g, b, a);
+  };
+
+  this.viewport = gl.getParameter(gl.VIEWPORT);
+  gl.viewport = function(x, y, w, h) {
+    self.viewport[0] = x;
+    self.viewport[1] = y;
+    self.viewport[2] = w;
+    self.viewport[3] = h;
+    self.realViewport.call(gl, x, y, w, h);
   };
 
   this.isPatched = true;
@@ -1625,10 +1716,15 @@ CardboardDistorter.prototype.unpatch = function() {
   canvas.height = this.bufferHeight;
 
   gl.bindFramebuffer = this.realBindFramebuffer;
+  gl.enable = this.realEnable;
+  gl.disable = this.realDisable;
+  gl.colorMask = this.realColorMask;
+  gl.clearColor = this.realClearColor;
+  gl.viewport = this.realViewport;
+
   // Check to see if our fake backbuffer is bound and bind the real backbuffer
   // if that's the case.
-  var framebufferBinding = gl.getParameter(gl.FRAMEBUFFER_BINDING);
-  if (framebufferBinding == this.framebuffer) {
+  if (this.lastBoundFramebuffer == this.framebuffer) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
@@ -1663,19 +1759,10 @@ CardboardDistorter.prototype.submitFrame = function() {
   var gl = this.gl;
   var self = this;
 
-  var glState = [
-    gl.CULL_FACE,
-    gl.DEPTH_TEST,
-    gl.BLEND,
-    gl.SCISSOR_TEST,
-    gl.STENCIL_TEST,
-    gl.COLOR_WRITEMASK,
-    gl.VIEWPORT
-  ];
+  var glState = [];
 
   if (!WebVRConfig.DIRTY_SUBMIT_FRAME_BINDINGS) {
     glState.push(
-      gl.FRAMEBUFFER_BINDING,
       gl.CURRENT_PROGRAM,
       gl.ARRAY_BUFFER_BINDING,
       gl.ELEMENT_ARRAY_BUFFER_BINDING,
@@ -1683,27 +1770,23 @@ CardboardDistorter.prototype.submitFrame = function() {
     );
   }
 
-  if (self.ctxAttribs.alpha) {
-    glState.push(gl.COLOR_CLEAR_VALUE);
-  }
-
   WGLUPreserveGLState(gl, glState, function(gl) {
     // Bind the real default framebuffer
     self.realBindFramebuffer.call(gl, gl.FRAMEBUFFER, null);
 
     // Make sure the GL state is in a good place
-    gl.disable(gl.CULL_FACE);
-    gl.disable(gl.DEPTH_TEST);
-    gl.disable(gl.BLEND);
-    gl.disable(gl.SCISSOR_TEST);
-    gl.disable(gl.STENCIL_TEST);
-    gl.colorMask(true, true, true, true);
-    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    if (self.cullFace) { self.realDisable.call(gl, gl.CULL_FACE); }
+    if (self.depthTest) { self.realDisable.call(gl, gl.DEPTH_TEST); }
+    if (self.blend) { self.realDisable.call(gl, gl.BLEND); }
+    if (self.scissorTest) { self.realDisable.call(gl, gl.SCISSOR_TEST); }
+    if (self.stencilTest) { self.realDisable.call(gl, gl.STENCIL_TEST); }
+    self.realColorMask.call(gl, true, true, true, true);
+    self.realViewport.call(gl, 0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
 
     // If the backbuffer has an alpha channel clear every frame so the page
     // doesn't show through.
     if (self.ctxAttribs.alpha) {
-      gl.clearColor(0, 0, 0, 1);
+      self.realClearColor.call(gl, 0, 0, 0, 1);
       gl.clear(gl.COLOR_BUFFER_BIT);
     }
 
@@ -1734,7 +1817,25 @@ CardboardDistorter.prototype.submitFrame = function() {
 
     // If preserveDrawingBuffer == false clear the framebuffer
     if (!self.ctxAttribs.preserveDrawingBuffer) {
+      self.realClearColor.call(gl, 0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
+    }
+
+    if (!WebVRConfig.DIRTY_SUBMIT_FRAME_BINDINGS) {
+      self.realBindFramebuffer.call(gl, gl.FRAMEBUFFER, self.lastBoundFramebuffer);
+    }
+
+    // Restore state
+    if (self.cullFace) { self.realEnable.call(gl, gl.CULL_FACE); }
+    if (self.depthTest) { self.realEnable.call(gl, gl.DEPTH_TEST); }
+    if (self.blend) { self.realEnable.call(gl, gl.BLEND); }
+    if (self.scissorTest) { self.realEnable.call(gl, gl.SCISSOR_TEST); }
+    if (self.stencilTest) { self.realEnable.call(gl, gl.STENCIL_TEST); }
+
+    self.realColorMask.apply(gl, self.colorMask);
+    self.realViewport.apply(gl, self.viewport);
+    if (self.ctxAttribs.alpha || !self.ctxAttribs.preserveDrawingBuffer) {
+      self.realClearColor.apply(gl, self.clearColor);
     }
   });
 };
@@ -1955,7 +2056,10 @@ function CardboardUI(gl) {
   this.uniforms = Util.getProgramUniforms(gl, this.program);
 
   this.vertexBuffer = gl.createBuffer();
-  this.vertexCount = 0;
+  this.gearOffset = 0;
+  this.gearVertexCount = 0;
+  this.arrowOffset = 0;
+  this.arrowVertexCount = 0;
 
   this.projMat = new Float32Array(16);
 
@@ -1978,9 +2082,9 @@ CardboardUI.prototype.destroy = function() {
 };
 
 /**
- * Adds a listener to clicks on the gear icon
+ * Adds a listener to clicks on the gear and back icons
  */
-CardboardUI.prototype.listen = function(callback) {
+CardboardUI.prototype.listen = function(optionsCallback, backCallback) {
   var canvas = this.gl.canvas;
   this.listener = function(event) {
     var midline = canvas.clientWidth / 2;
@@ -1989,7 +2093,11 @@ CardboardUI.prototype.listen = function(callback) {
     if (event.clientX > midline - buttonSize &&
         event.clientX < midline + buttonSize &&
         event.clientY > canvas.clientHeight - buttonSize) {
-      callback(event);
+      optionsCallback(event);
+    }
+    // Check to see if the user clicked on (or around) the back icon
+    else if (event.clientX < buttonSize && event.clientY < buttonSize) {
+      backCallback(event);
     }
   };
   canvas.addEventListener('click', this.listener, false);
@@ -2015,14 +2123,18 @@ CardboardUI.prototype.onResize = function() {
     var dps = window.devicePixelRatio * (gl.drawingBufferWidth / (screen.width*window.devicePixelRatio));
 
     var lineWidth = kCenterLineThicknessDp * dps / 2;
-    var buttonHeight = kButtonWidthDp * kTouchSlopFactor * dps;
+    var buttonSize = kButtonWidthDp * kTouchSlopFactor * dps;
     var buttonScale = kButtonWidthDp * dps / 2;
+    var buttonBorder = ((kButtonWidthDp * kTouchSlopFactor) - kButtonWidthDp) * dps;
 
     // Build centerline
-    vertices.push(midline - lineWidth, buttonHeight);
+    vertices.push(midline - lineWidth, buttonSize);
     vertices.push(midline - lineWidth, gl.drawingBufferHeight);
-    vertices.push(midline + lineWidth, buttonHeight);
+    vertices.push(midline + lineWidth, buttonSize);
     vertices.push(midline + lineWidth, gl.drawingBufferHeight);
+
+    // Build gear
+    self.gearOffset = (vertices.length / 2);
 
     function addGearSegment(theta, r) {
       var angle = (90 - theta) * DEG2RAD;
@@ -2032,7 +2144,6 @@ CardboardUI.prototype.onResize = function() {
       vertices.push(r * x * buttonScale + midline, r * y * buttonScale + buttonScale);
     }
 
-    // Build gear
     for (var i = 0; i <= 6; i++) {
       var segmentTheta = i * kAnglePerGearSection;
 
@@ -2043,10 +2154,42 @@ CardboardUI.prototype.onResize = function() {
       addGearSegment(segmentTheta + (kAnglePerGearSection - kOuterRimEndAngle), kOuterRadius);
     }
 
+    self.gearVertexCount = (vertices.length / 2) - self.gearOffset;
+
+    // Build back arrow
+    self.arrowOffset = (vertices.length / 2);
+
+    function addArrowVertex(x, y) {
+      vertices.push(buttonBorder + x, gl.drawingBufferHeight - buttonBorder - y);
+    }
+
+    var angledLineWidth = lineWidth / Math.sin(45 * DEG2RAD);
+
+    addArrowVertex(0, buttonScale);
+    addArrowVertex(buttonScale, 0);
+    addArrowVertex(buttonScale + angledLineWidth, angledLineWidth);
+    addArrowVertex(angledLineWidth, buttonScale + angledLineWidth);
+
+    addArrowVertex(angledLineWidth, buttonScale - angledLineWidth);
+    addArrowVertex(0, buttonScale);
+    addArrowVertex(buttonScale, buttonScale * 2);
+    addArrowVertex(buttonScale + angledLineWidth, (buttonScale * 2) - angledLineWidth);
+
+    addArrowVertex(angledLineWidth, buttonScale - angledLineWidth);
+    addArrowVertex(0, buttonScale);
+
+    addArrowVertex(angledLineWidth, buttonScale - lineWidth);
+    addArrowVertex(kButtonWidthDp * dps, buttonScale - lineWidth);
+    addArrowVertex(angledLineWidth, buttonScale + lineWidth);
+    addArrowVertex(kButtonWidthDp * dps, buttonScale + lineWidth);
+
+    self.arrowVertexCount = (vertices.length / 2) - self.arrowOffset;
+
+    // Buffer data
     gl.bindBuffer(gl.ARRAY_BUFFER, self.vertexBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
 
-    self.vertexCount = (vertices.length / 2) - 4;
+
   });
 };
 
@@ -2102,7 +2245,8 @@ CardboardUI.prototype.renderNoState = function() {
 
   // Draws UI element
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-  gl.drawArrays(gl.TRIANGLE_STRIP, 4, this.vertexCount);
+  gl.drawArrays(gl.TRIANGLE_STRIP, this.gearOffset, this.gearVertexCount);
+  gl.drawArrays(gl.TRIANGLE_STRIP, this.arrowOffset, this.arrowVertexCount);
 };
 
 module.exports = CardboardUI;
@@ -2237,13 +2381,17 @@ CardboardVRDisplay.prototype.beginPresent_ = function() {
   }
 
   this.cardboardUI_.listen(function() {
-    this.viewerSelector_.show();
+    // Options clicked
+    this.viewerSelector_.show(this.layer_.source.parentElement);
+  }.bind(this), function() {
+    // Back clicked
+    this.exitPresent();
   }.bind(this));
 
-  if (Util.isLandscapeMode() && Util.isMobile()) {
+  if (!Util.isLandscapeMode() && Util.isMobile()) {
     // In landscape mode, temporarily show the "put into Cardboard"
     // interstitial. Otherwise, do the default thing.
-    this.rotateInstructions_.showTemporarily(3000);
+    this.rotateInstructions_.showTemporarily(3000, this.fullscreenWrapper_);
   } else {
     this.rotateInstructions_.update();
   }
@@ -2251,6 +2399,10 @@ CardboardVRDisplay.prototype.beginPresent_ = function() {
   // Listen for orientation change events in order to show interstitial.
   this.orientationHandler = this.onOrientationChange_.bind(this);
   window.addEventListener('orientationchange', this.orientationHandler);
+
+  // Fire this event initially, to give geometry-distortion clients the chance
+  // to do something custom.
+  this.fireVRDisplayDeviceParamsChange_();
 };
 
 CardboardVRDisplay.prototype.endPresent_ = function() {
@@ -2289,9 +2441,19 @@ CardboardVRDisplay.prototype.onViewerChanged_ = function(viewer) {
   // Update the distortion appropriately.
   this.distorter_.updateDeviceInfo(this.deviceInfo_);
 
-  // TODO: Emit a custom event which includes device info and viewer info. This
-  // is for clients that want to implement their own geometry-based distortion.
-  //this.emit('viewerchange', viewer);
+  // Fire a new event containing viewer and device parameters for clients that
+  // want to implement their own geometry-based distortion.
+  this.fireVRDisplayDeviceParamsChange_();
+};
+
+CardboardVRDisplay.prototype.fireVRDisplayDeviceParamsChange_ = function() {
+  var event = new CustomEvent('vrdisplaydeviceparamschange', {
+    detail: {
+      vrdisplay: this,
+      deviceInfo: this.deviceInfo_,
+    }
+  });
+  window.dispatchEvent(event);
 };
 
 module.exports = CardboardVRDisplay;
@@ -4208,7 +4370,6 @@ module.exports = Emitter;
  * limitations under the License.
  */
 var WebVRPolyfill = _dereq_('./webvr-polyfill.js');
-window.CardboardUI = _dereq_('./cardboard-ui.js');
 
 // Initialize a WebVRConfig just in case.
 window.WebVRConfig = window.WebVRConfig || {};
@@ -4221,7 +4382,7 @@ if (!window.WebVRConfig.DEFER_INITIALIZATION) {
   }
 }
 
-},{"./cardboard-ui.js":5,"./webvr-polyfill.js":26}],15:[function(_dereq_,module,exports){
+},{"./webvr-polyfill.js":26}],15:[function(_dereq_,module,exports){
 /*
  * Copyright 2016 Google Inc. All Rights Reserved.
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -4482,12 +4643,20 @@ function RotateInstructions() {
 
   this.overlay = overlay;
   this.text = text;
-  document.body.appendChild(overlay);
 
   this.hide();
 }
 
-RotateInstructions.prototype.show = function() {
+RotateInstructions.prototype.show = function(parent) {
+  if (!parent && !this.overlay.parentElement) {
+    document.body.appendChild(this.overlay);
+  } else if (parent) {
+    if (this.overlay.parentElement && this.overlay.parentElement != parent)
+      this.overlay.parentElement.removeChild(this.overlay);
+
+    parent.appendChild(this.overlay);
+  }
+
   this.overlay.style.display = 'block';
 
   var img = this.overlay.querySelector('img');
@@ -4502,14 +4671,18 @@ RotateInstructions.prototype.show = function() {
     s.marginLeft = '25%';
     s.marginTop = '25%';
   }
+
+  document.body.dispatchEvent(new CustomEvent('VRManInstructionsShown'))
 };
 
 RotateInstructions.prototype.hide = function() {
   this.overlay.style.display = 'none';
+
+  document.body.dispatchEvent(new CustomEvent('VRManInstructionsHidden'))
 };
 
-RotateInstructions.prototype.showTemporarily = function(ms) {
-  this.show();
+RotateInstructions.prototype.showTemporarily = function(ms, parent) {
+  this.show(parent);
   this.timer = setTimeout(this.hide.bind(this), ms);
 };
 
@@ -7549,6 +7722,7 @@ var DeviceInfo = _dereq_('./device-info.js');
 
 var DEFAULT_VIEWER = 'CardboardV1';
 var VIEWER_KEY = 'WEBVR_CARDBOARD_VIEWER';
+var CLASS_NAME = 'webvr-polyfill-viewer-selector';
 
 /**
  * Creates a viewer selector with the options specified. Supports being shown
@@ -7564,11 +7738,14 @@ function ViewerSelector() {
     console.error('Failed to load viewer profile: %s', error);
   }
   this.dialog = this.createDialog_(DeviceInfo.Viewers);
-  document.body.appendChild(this.dialog);
+  this.root = null;
 }
 ViewerSelector.prototype = new Emitter();
 
-ViewerSelector.prototype.show = function() {
+ViewerSelector.prototype.show = function(root) {
+  this.root = root;
+
+  root.appendChild(this.dialog);
   //console.log('ViewerSelector.show');
 
   // Ensure the currently selected item is checked.
@@ -7580,6 +7757,9 @@ ViewerSelector.prototype.show = function() {
 };
 
 ViewerSelector.prototype.hide = function() {
+  if (this.root && this.root.contains(this.dialog)) {
+    this.root.removeChild(this.dialog);
+  }
   //console.log('ViewerSelector.hide');
   this.dialog.style.display = 'none';
 };
@@ -7619,6 +7799,7 @@ ViewerSelector.prototype.onSave_ = function() {
  */
 ViewerSelector.prototype.createDialog_ = function(options) {
   var container = document.createElement('div');
+  container.classList.add(CLASS_NAME);
   container.style.display = 'none';
   // Create an overlay that dims the background, and which goes away when you
   // tap it.
@@ -7927,14 +8108,18 @@ WebVRPolyfill.prototype.getVRDevices = function() {
     try {
       if (!self.devicesPopulated) {
         if (self.nativeWebVRAvailable) {
-          return navigator.getVRDisplays(function(displays) {
+          return navigator.getVRDisplays()
+		  .then(function(displays) {
             for (var i = 0; i < displays.length; ++i) {
               self.devices.push(new VRDisplayHMDDevice(displays[i]));
               self.devices.push(new VRDisplayPositionSensorDevice(displays[i]));
             }
             self.devicesPopulated = true;
             resolve(self.devices);
-          }, reject);
+          })
+		  .catch(function (e) {
+		  	reject()
+		  });
         }
 
         if (self.nativeLegacyWebVRAvailable) {
