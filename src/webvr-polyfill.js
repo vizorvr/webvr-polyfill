@@ -129,14 +129,18 @@ WebVRPolyfill.prototype.getVRDevices = function() {
     try {
       if (!self.devicesPopulated) {
         if (self.nativeWebVRAvailable) {
-          return navigator.getVRDisplays(function(displays) {
+          return navigator.getVRDisplays()
+		  .then(function(displays) {
             for (var i = 0; i < displays.length; ++i) {
               self.devices.push(new VRDisplayHMDDevice(displays[i]));
               self.devices.push(new VRDisplayPositionSensorDevice(displays[i]));
             }
             self.devicesPopulated = true;
             resolve(self.devices);
-          }, reject);
+          })
+		  .catch(function (e) {
+		  	reject()
+		  });
         }
 
         if (self.nativeLegacyWebVRAvailable) {
