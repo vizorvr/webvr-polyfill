@@ -22,14 +22,29 @@ var Util = require('../util.js');
  * The pose sensor, implemented using DeviceMotion APIs.
  */
 function FusionPoseSensor() {
+  var that = this;
+
   this.deviceId = 'webvr-polyfill:fused';
   this.deviceName = 'VR Position Device (webvr-polyfill:fused)';
 
   this.accelerometer = new THREE.Vector3();
   this.gyroscope = new THREE.Vector3();
 
+  window.addEventListener('message', function(e) {
+    if (e.data.orientation) {
+      that.onScreenOrientationChange_(e.data.orientation)
+      $(window).trigger('orientationchange')
+    }
+
+    if (e.data.devicemotion) {
+      that.onDeviceMotionChange_(e.data.devicemotion)
+    }
+  })
+
   window.addEventListener('devicemotion', this.onDeviceMotionChange_.bind(this));
-  window.addEventListener('orientationchange', this.onScreenOrientationChange_.bind(this));
+  window.addEventListener('orientationchange', function() {
+    that.onScreenOrientationChange_(window.orientation);
+  });
 
   this.filter = new ComplementaryFilter(WebVRConfig.K_FILTER || 0.98);
   this.posePredictor = new PosePredictor(WebVRConfig.PREDICTION_TIME_S || 0.040);
@@ -141,12 +156,13 @@ FusionPoseSensor.prototype.onDeviceMotionChange_ = function(deviceMotion) {
 
 FusionPoseSensor.prototype.onScreenOrientationChange_ =
     function(screenOrientation) {
-  this.setScreenTransform_();
+  this.setScreenTransform_(screenOrientation);
 };
 
-FusionPoseSensor.prototype.setScreenTransform_ = function() {
+FusionPoseSensor.prototype.setScreenTransform_ = function(orientation) {
   this.worldToScreenQ.set(0, 0, 0, 1);
-  switch (window.orientation) {
+  orientation = orientation || window.orientation
+  switch (orientation) {
     case 0:
       break;
     case 90:
