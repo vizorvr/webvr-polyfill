@@ -73,9 +73,11 @@ MouseKeyboardPositionSensorVRDevice.prototype.getState = function() {
 };
 
 MouseKeyboardPositionSensorVRDevice.prototype.onKeyDown_ = function(e) {
-  if ((typeof E2 === 'undefined') || (typeof E2.app === 'undefined')) return true;
-  if (!E2.app.canInitiateCameraMove(e))
-    return true;
+
+  // vizor.io gm #1504
+  if (E2 && E2.app && !E2.app.canInitiateCameraMove(e))
+      return true
+  // end vizor.io gm #1504
 
   // Track WASD and arrow keys.
   if (e.keyCode == 38) { // Up key.
@@ -127,8 +129,10 @@ MouseKeyboardPositionSensorVRDevice.prototype.animateKeyTransitions_ = function(
 };
 
 MouseKeyboardPositionSensorVRDevice.prototype.onMouseDown_ = function(e) {
-  if (!E2.app.canInitiateCameraMove(e))
-    return;
+  // vizor.io gm #1504
+  if (E2 && E2.app &&  !E2.app.canInitiateCameraMove(e))
+      return true
+  // end vizor.io gm #1504
 
   this.rotateStart.set(e.clientX, e.clientY);
   this.isDragging = true;
@@ -151,11 +155,23 @@ MouseKeyboardPositionSensorVRDevice.prototype.onMouseMove_ = function(e) {
   this.rotateDelta.subVectors(this.rotateEnd, this.rotateStart);
   this.rotateStart.copy(this.rotateEnd);
 
-  // Keep track of the cumulative euler angles.
-  var element = document.body;
-  this.phi += 2 * Math.PI * this.rotateDelta.y / element.clientHeight * MOUSE_SPEED_Y;
-  this.theta += 2 * Math.PI * this.rotateDelta.x / element.clientWidth * MOUSE_SPEED_X;
+  // vizor.io gm #896
+  var element = document.body,
+      height = element.clientHeight,
+      width = element.clientWidth
 
+  if (WebVRConfig && WebVRConfig.getContainerMeta) {
+     var meta = WebVRConfig.getContainerMeta()
+     height  = meta.height
+     width   = meta.width
+  }
+
+  // Keep track of the cumulative euler angles.
+  this.phi_ += 2 * Math.PI * this.rotateDelta_.y / height * MOUSE_SPEED_Y;
+  this.theta_ += 2 * Math.PI * this.rotateDelta_.x / width * MOUSE_SPEED_X;
+
+  // end vizor.io gm #896
+  
   // Prevent looking too far up or down.
   this.phi = Util.clamp(this.phi, -Math.PI/2, Math.PI/2);
 };

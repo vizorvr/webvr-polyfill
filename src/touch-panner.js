@@ -44,6 +44,11 @@ TouchPanner.prototype.resetSensor = function() {
 };
 
 TouchPanner.prototype.onTouchStart_ = function(e) {
+  // vizor.io gm #1504
+    if (E2 && E2.app &&  !E2.app.canInitiateCameraMove(e))
+        return
+    // end vizor.io gm #1504
+  
   // Only respond if there is exactly one touch.
   if (e.touches.length != 1) {
     return;
