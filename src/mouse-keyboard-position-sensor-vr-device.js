@@ -75,7 +75,7 @@ MouseKeyboardPositionSensorVRDevice.prototype.getState = function() {
 MouseKeyboardPositionSensorVRDevice.prototype.onKeyDown_ = function(e) {
 
   // vizor.io gm #1504
-  if (E2 && E2.app && !E2.app.canInitiateCameraMove(e))
+  if (WebVRConfig && WebVRConfig.canInitiateCameraMove && (WebVRConfig.canInitiateCameraMove(e) === false))
       return true
   // end vizor.io gm #1504
 
@@ -130,7 +130,7 @@ MouseKeyboardPositionSensorVRDevice.prototype.animateKeyTransitions_ = function(
 
 MouseKeyboardPositionSensorVRDevice.prototype.onMouseDown_ = function(e) {
   // vizor.io gm #1504
-  if (E2 && E2.app &&  !E2.app.canInitiateCameraMove(e))
+  if (WebVRConfig && WebVRConfig.canInitiateCameraMove && (WebVRConfig.canInitiateCameraMove(e) === false))
       return true
   // end vizor.io gm #1504
 

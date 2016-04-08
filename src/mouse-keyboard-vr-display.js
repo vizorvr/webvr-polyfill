@@ -130,6 +130,11 @@ MouseKeyboardVRDisplay.prototype.animateKeyTransitions_ = function(angleName, ta
 };
 
 MouseKeyboardVRDisplay.prototype.onMouseDown_ = function(e) {
+  // vizor.io gm #1504
+  if (WebVRConfig && WebVRConfig.canInitiateCameraMove && (WebVRConfig.canInitiateCameraMove(e) === false))
+      return true
+  // end vizor.io gm #1504
+
   this.rotateStart_.set(e.clientX, e.clientY);
   this.isDragging_ = true;
 };
