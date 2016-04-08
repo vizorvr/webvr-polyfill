@@ -32,6 +32,7 @@ function ViewerSelector() {
   try {
     this.selectedKey = localStorage.getItem(VIEWER_KEY) || DEFAULT_VIEWER;
   } catch (error) {
+    this.selectedKey = DEFAULT_VIEWER;  // gm^vizor.io: should localStorage fail (typically in iframe)
     console.error('Failed to load viewer profile: %s', error);
   }
   this.dialog = this.createDialog_(DeviceInfo.Viewers);
