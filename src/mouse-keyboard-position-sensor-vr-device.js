@@ -74,10 +74,8 @@ MouseKeyboardPositionSensorVRDevice.prototype.getState = function() {
 
 MouseKeyboardPositionSensorVRDevice.prototype.onKeyDown_ = function(e) {
 
-  // vizor.io gm #1504
   if (WebVRConfig && WebVRConfig.canInitiateCameraMove && (WebVRConfig.canInitiateCameraMove(e) === false))
       return true
-  // end vizor.io gm #1504
 
   // Track WASD and arrow keys.
   if (e.keyCode == 38) { // Up key.
@@ -129,10 +127,8 @@ MouseKeyboardPositionSensorVRDevice.prototype.animateKeyTransitions_ = function(
 };
 
 MouseKeyboardPositionSensorVRDevice.prototype.onMouseDown_ = function(e) {
-  // vizor.io gm #1504
   if (WebVRConfig && WebVRConfig.canInitiateCameraMove && (WebVRConfig.canInitiateCameraMove(e) === false))
       return true
-  // end vizor.io gm #1504
 
   this.rotateStart.set(e.clientX, e.clientY);
   this.isDragging = true;
@@ -155,7 +151,6 @@ MouseKeyboardPositionSensorVRDevice.prototype.onMouseMove_ = function(e) {
   this.rotateDelta.subVectors(this.rotateEnd, this.rotateStart);
   this.rotateStart.copy(this.rotateEnd);
 
-  // vizor.io gm #896
   var element = document.body,
       height = element.clientHeight,
       width = element.clientWidth
@@ -169,8 +164,6 @@ MouseKeyboardPositionSensorVRDevice.prototype.onMouseMove_ = function(e) {
   // Keep track of the cumulative euler angles.
   this.phi_ += 2 * Math.PI * this.rotateDelta_.y / height * MOUSE_SPEED_Y;
   this.theta_ += 2 * Math.PI * this.rotateDelta_.x / width * MOUSE_SPEED_X;
-
-  // end vizor.io gm #896
   
   // Prevent looking too far up or down.
   this.phi = Util.clamp(this.phi, -Math.PI/2, Math.PI/2);
