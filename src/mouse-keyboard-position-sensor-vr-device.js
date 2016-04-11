@@ -74,7 +74,9 @@ MouseKeyboardPositionSensorVRDevice.prototype.getState = function() {
 
 MouseKeyboardPositionSensorVRDevice.prototype.onKeyDown_ = function(e) {
 
-  if (WebVRConfig && WebVRConfig.canInitiateCameraMove && (WebVRConfig.canInitiateCameraMove(e) === false))
+  if (WebVRConfig &&
+      ((typeof WebVRConfig.canInitiateCameraMove === 'function'  &&  WebVRConfig.canInitiateCameraMove(e) === false)
+          || WebVRConfig.canInitiateCameraMove === false))
       return true
 
   // Track WASD and arrow keys.

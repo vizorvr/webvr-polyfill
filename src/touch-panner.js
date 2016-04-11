@@ -44,8 +44,10 @@ TouchPanner.prototype.resetSensor = function() {
 };
 
 TouchPanner.prototype.onTouchStart_ = function(e) {
-    if (E2 && E2.app &&  !E2.app.canInitiateCameraMove(e))
-        return
+    if (WebVRConfig &&
+        ((typeof WebVRConfig.canInitiateCameraMove === 'function'  &&  WebVRConfig.canInitiateCameraMove(e) === false)
+          || WebVRConfig.canInitiateCameraMove === false))
+      return true
 
   // Only respond if there is exactly one touch.
   if (e.touches.length != 1) {

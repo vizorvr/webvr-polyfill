@@ -130,7 +130,9 @@ MouseKeyboardVRDisplay.prototype.animateKeyTransitions_ = function(angleName, ta
 };
 
 MouseKeyboardVRDisplay.prototype.onMouseDown_ = function(e) {
-  if (WebVRConfig && WebVRConfig.canInitiateCameraMove && (WebVRConfig.canInitiateCameraMove(e) === false))
+  if (WebVRConfig &&
+      ((typeof WebVRConfig.canInitiateCameraMove === 'function'  &&  WebVRConfig.canInitiateCameraMove(e) === false)
+          || WebVRConfig.canInitiateCameraMove === false))
       return true
 
   this.rotateStart_.set(e.clientX, e.clientY);
