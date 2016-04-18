@@ -43,7 +43,7 @@ function CardboardVRDisplay() {
   this.distorter_ = null;
   this.cardboardUI_ = null;
 
-  this.dpdb_ = new Dpdb(true, this.onDeviceParamsUpdated_.bind(this));
+  this.dpdb_ = new Dpdb(!WebVRConfig.NO_DPDB_FETCH , this.onDeviceParamsUpdated_.bind(this));
   this.deviceInfo_ = new DeviceInfo(this.dpdb_.getDeviceParams());
 
   this.viewerSelector_ = new ViewerSelector();
@@ -178,7 +178,6 @@ CardboardVRDisplay.prototype.submitFrame = function(pose) {
 };
 
 CardboardVRDisplay.prototype.onOrientationChange_ = function(e) {
-  console.log('onOrientationChange_');
 
   // Hide the viewer selector.
   this.viewerSelector_.hide();

@@ -1533,6 +1533,7 @@ function CardboardDistorter(gl) {
   this.onResize();
 
   this.cardboardUI = new CardboardUI(gl);
+
 };
 
 /**
@@ -1649,8 +1650,11 @@ CardboardDistorter.prototype.patch = function() {
   var gl = this.gl;
 
   if (!Util.isIOS()) {
+
+    /*
     canvas.width = Util.getScreenWidth() * this.bufferScale;
     canvas.height = Util.getScreenHeight() * this.bufferScale;
+    */
 
     Object.defineProperty(canvas, 'width', {
       configurable: true,
@@ -1760,8 +1764,8 @@ CardboardDistorter.prototype.unpatch = function() {
     Object.defineProperty(canvas, 'width', this.realCanvasWidth);
     Object.defineProperty(canvas, 'height', this.realCanvasHeight);
   }
-  canvas.width = this.bufferWidth;
-  canvas.height = this.bufferHeight;
+  // canvas.width = this.bufferWidth;
+  // canvas.height = this.bufferHeight;
 
   gl.bindFramebuffer = this.realBindFramebuffer;
   gl.enable = this.realEnable;
@@ -2383,7 +2387,7 @@ function CardboardVRDisplay() {
   this.distorter_ = null;
   this.cardboardUI_ = null;
 
-  this.dpdb_ = new Dpdb(true, this.onDeviceParamsUpdated_.bind(this));
+  this.dpdb_ = new Dpdb(!WebVRConfig.NO_DPDB_FETCH , this.onDeviceParamsUpdated_.bind(this));
   this.deviceInfo_ = new DeviceInfo(this.dpdb_.getDeviceParams());
 
   this.viewerSelector_ = new ViewerSelector();
@@ -2518,7 +2522,6 @@ CardboardVRDisplay.prototype.submitFrame = function(pose) {
 };
 
 CardboardVRDisplay.prototype.onOrientationChange_ = function(e) {
-  console.log('onOrientationChange_');
 
   // Hide the viewer selector.
   this.viewerSelector_.hide();
@@ -4826,10 +4829,13 @@ RotateInstructions.prototype.show = function(parent) {
     s.marginLeft = '25%';
     s.marginTop = '25%';
   }
+
+  document.body.dispatchEvent(new CustomEvent('VRInstructionsShown'))
 };
 
 RotateInstructions.prototype.hide = function() {
   this.overlay.style.display = 'none';
+  document.body.dispatchEvent(new CustomEvent('VRInstructionsHidden'))
 };
 
 RotateInstructions.prototype.showTemporarily = function(ms, parent) {

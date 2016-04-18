@@ -118,6 +118,7 @@ function CardboardDistorter(gl) {
   this.onResize();
 
   this.cardboardUI = new CardboardUI(gl);
+
 };
 
 /**
@@ -234,8 +235,11 @@ CardboardDistorter.prototype.patch = function() {
   var gl = this.gl;
 
   if (!Util.isIOS()) {
+
+    /*
     canvas.width = Util.getScreenWidth() * this.bufferScale;
     canvas.height = Util.getScreenHeight() * this.bufferScale;
+    */
 
     Object.defineProperty(canvas, 'width', {
       configurable: true,
@@ -345,8 +349,8 @@ CardboardDistorter.prototype.unpatch = function() {
     Object.defineProperty(canvas, 'width', this.realCanvasWidth);
     Object.defineProperty(canvas, 'height', this.realCanvasHeight);
   }
-  canvas.width = this.bufferWidth;
-  canvas.height = this.bufferHeight;
+  // canvas.width = this.bufferWidth;
+  // canvas.height = this.bufferHeight;
 
   gl.bindFramebuffer = this.realBindFramebuffer;
   gl.enable = this.realEnable;
