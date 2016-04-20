@@ -164,10 +164,12 @@ CardboardUI.prototype.onResize = function() {
     var buttonBorder = ((kButtonWidthDp * kTouchSlopFactor) - kButtonWidthDp) * dps;
 
     // Build centerline
+    /*
     vertices.push(midline - lineWidth, buttonSize);
     vertices.push(midline - lineWidth, gl.drawingBufferHeight);
     vertices.push(midline + lineWidth, buttonSize);
     vertices.push(midline + lineWidth, gl.drawingBufferHeight);
+    */
 
     // Build gear
     self.gearOffset = (vertices.length / 2);
