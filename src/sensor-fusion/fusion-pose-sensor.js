@@ -122,7 +122,13 @@ FusionPoseSensor.prototype.resetPose = function() {
   }
 };
 
-FusionPoseSensor.prototype.onDeviceMotionChange_ = function(deviceMotion) {
+FusionPoseSensor.prototype.onDeviceMotionChange_ = function(e) {
+  var deviceMotion = e; // default to event
+
+  if (e && e.detail && e.detail.devicemotion) { // ... but allow sending a custom event via postMessage
+    deviceMotion = e.detail.devicemotion;
+  }
+
   var accGravity = deviceMotion.accelerationIncludingGravity;
   var rotRate = deviceMotion.rotationRate;
   var timestampS = deviceMotion.timeStamp / 1000;
@@ -154,9 +160,13 @@ FusionPoseSensor.prototype.onDeviceMotionChange_ = function(deviceMotion) {
   this.previousTimestampS = timestampS;
 };
 
-FusionPoseSensor.prototype.onScreenOrientationChange_ =
-    function(screenOrientation) {
-  this.setScreenTransform_(screenOrientation);
+
+FusionPoseSensor.prototype.onScreenOrientationChange_ = function(e) {
+  var orientation = window.orientation;
+  if (e && e.detail && (typeof e.detail.orientation !== 'undefined')) {
+    orientation = e.detail.orientation;
+  }
+  this.setScreenTransform_(orientation);
 };
 
 FusionPoseSensor.prototype.setScreenTransform_ = function(orientation) {

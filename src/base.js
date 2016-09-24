@@ -23,6 +23,7 @@ var nextDisplayId = 1000;
  * The base class for all VR displays.
  */
 function VRDisplay() {
+  this.isPolyfilled = true;
   this.displayId = nextDisplayId++;
   this.displayName = 'webvr-polyfill displayName';
 
@@ -192,6 +193,7 @@ VRDisplay.prototype.exitPresent = function() {
   return new Promise(function(resolve, reject) {
     if (wasPresenting) {
       if (!Util.exitFullscreen() && Util.isIOS()) {
+        self.fireVRDisplayPresentChange_();
         self.endPresent_();
       }
 
