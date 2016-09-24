@@ -1075,6 +1075,7 @@ var nextDisplayId = 1000;
  * The base class for all VR displays.
  */
 function VRDisplay() {
+  this.isPolyfilled = true;
   this.displayId = nextDisplayId++;
   this.displayName = 'webvr-polyfill displayName';
 
@@ -1244,6 +1245,7 @@ VRDisplay.prototype.exitPresent = function() {
   return new Promise(function(resolve, reject) {
     if (wasPresenting) {
       if (!Util.exitFullscreen() && Util.isIOS()) {
+        self.fireVRDisplayPresentChange_();
         self.endPresent_();
       }
 
@@ -2118,7 +2120,12 @@ CardboardUI.prototype.onResize = function() {
     var midline = gl.drawingBufferWidth/2;
 
     // Assumes your canvas width and height is scaled proportionately.
-    var dps = window.devicePixelRatio * (gl.drawingBufferWidth / (screen.width*window.devicePixelRatio));
+    // TODO(smus): The following causes buttons to become huge on iOS, but seems
+    // like the right thing to do. For now, added a hack. But really, investigate why.
+    var dps = (gl.drawingBufferWidth / (screen.width * window.devicePixelRatio));
+    if (!Util.isIOS()) {
+      dps *= window.devicePixelRatio;
+    }
 
     var lineWidth = kCenterLineThicknessDp * dps / 2;
     var buttonSize = kButtonWidthDp * kTouchSlopFactor * dps;
@@ -2126,10 +2133,12 @@ CardboardUI.prototype.onResize = function() {
     var buttonBorder = ((kButtonWidthDp * kTouchSlopFactor) - kButtonWidthDp) * dps;
 
     // Build centerline
+    /*
     vertices.push(midline - lineWidth, buttonSize);
     vertices.push(midline - lineWidth, gl.drawingBufferHeight);
     vertices.push(midline + lineWidth, buttonSize);
     vertices.push(midline + lineWidth, gl.drawingBufferHeight);
+    */
 
     // Build gear
     self.gearOffset = (vertices.length / 2);
@@ -2248,6 +2257,7 @@ CardboardUI.prototype.renderNoState = function() {
 };
 
 module.exports = CardboardUI;
+
 },{"./deps/wglu-preserve-state.js":7,"./util.js":23}],6:[function(_dereq_,module,exports){
 /*
  * Copyright 2016 Google Inc. All Rights Reserved.
@@ -2293,7 +2303,7 @@ function CardboardVRDisplay() {
   this.distorter_ = null;
   this.cardboardUI_ = null;
 
-  this.dpdb_ = new Dpdb(true, this.onDeviceParamsUpdated_.bind(this));
+  this.dpdb_ = new Dpdb(!WebVRConfig.NO_DPDB_FETCH , this.onDeviceParamsUpdated_.bind(this));
   this.deviceInfo_ = new DeviceInfo(this.dpdb_.getDeviceParams());
 
   this.viewerSelector_ = new ViewerSelector();
@@ -3032,7 +3042,7 @@ function VRDisplayHMDDevice(display) {
   this.display = display;
 
   this.hardwareUnitId = display.displayId;
-  this.deviceId = 'webvr-pollyfill:HMD:' + display.displayId;
+  this.deviceId = 'webvr-polyfill:HMD:' + display.displayId;
   this.deviceName = display.displayName + ' (HMD)';
 }
 VRDisplayHMDDevice.prototype = new HMDVRDevice();
@@ -3072,7 +3082,7 @@ function VRDisplayPositionSensorDevice(display) {
   this.display = display;
 
   this.hardwareUnitId = display.displayId;
-  this.deviceId = 'webvr-pollyfill:PositionSensor: ' + display.displayId;
+  this.deviceId = 'webvr-polyfill:PositionSensor: ' + display.displayId;
   this.deviceName = display.displayName + ' (PositionSensor)';
 }
 VRDisplayPositionSensorDevice.prototype = new PositionSensorVRDevice();
@@ -4465,6 +4475,10 @@ MouseKeyboardVRDisplay.prototype.getImmediatePose = function() {
 };
 
 MouseKeyboardVRDisplay.prototype.onKeyDown_ = function(e) {
+  if (this.canInitiateRotation(e) === false) {
+    return true;
+  }
+
   // Track WASD and arrow keys.
   if (e.keyCode == 38) { // Up key.
     this.animatePhi_(this.phi_ + KEY_SPEED);
@@ -4513,6 +4527,8 @@ MouseKeyboardVRDisplay.prototype.animateKeyTransitions_ = function(angleName, ta
 };
 
 MouseKeyboardVRDisplay.prototype.onMouseDown_ = function(e) {
+  if (this.canInitiateRotation(e) === false) return true;
+
   this.rotateStart_.set(e.clientX, e.clientY);
   this.isDragging_ = true;
 };
@@ -4555,6 +4571,16 @@ MouseKeyboardVRDisplay.prototype.isPointerLocked_ = function() {
 MouseKeyboardVRDisplay.prototype.resetPose = function() {
   this.phi_ = 0;
   this.theta_ = 0;
+};
+
+// returns the object that handles manual orientation/panning/rotation on behalf of this display
+MouseKeyboardVRDisplay.prototype.getManualPannerRef = function() {
+  return this
+};
+
+// override to dynamically allow/deny user input to control pan/rotation (e.g. based on event target)
+MouseKeyboardVRDisplay.prototype.canInitiateRotation = function(e) {
+  return true;
 };
 
 module.exports = MouseKeyboardVRDisplay;
@@ -4999,7 +5025,13 @@ FusionPoseSensor.prototype.resetPose = function() {
   }
 };
 
-FusionPoseSensor.prototype.onDeviceMotionChange_ = function(deviceMotion) {
+FusionPoseSensor.prototype.onDeviceMotionChange_ = function(e) {
+  var deviceMotion = e; // default to event
+
+  if (e && e.detail && e.detail.devicemotion) { // ... but allow sending a custom event via postMessage
+    deviceMotion = e.detail.devicemotion;
+  }
+
   var accGravity = deviceMotion.accelerationIncludingGravity;
   var rotRate = deviceMotion.rotationRate;
   var timestampS = deviceMotion.timeStamp / 1000;
@@ -5031,9 +5063,13 @@ FusionPoseSensor.prototype.onDeviceMotionChange_ = function(deviceMotion) {
   this.previousTimestampS = timestampS;
 };
 
-FusionPoseSensor.prototype.onScreenOrientationChange_ =
-    function(screenOrientation) {
-  this.setScreenTransform_(screenOrientation);
+
+FusionPoseSensor.prototype.onScreenOrientationChange_ = function(e) {
+  var orientation = window.orientation;
+  if (e && e.detail && (typeof e.detail.orientation !== 'undefined')) {
+    orientation = e.detail.orientation;
+  }
+  this.setScreenTransform_(orientation);
 };
 
 FusionPoseSensor.prototype.setScreenTransform_ = function(orientation) {
@@ -7498,6 +7534,10 @@ TouchPanner.prototype.resetSensor = function() {
 };
 
 TouchPanner.prototype.onTouchStart_ = function(e) {
+  if (this.canInitiateRotation(e) === false) {
+    return;
+  }
+
   // Only respond if there is exactly one touch.
   if (e.touches.length != 1) {
     return;
@@ -7525,6 +7565,11 @@ TouchPanner.prototype.onTouchMove_ = function(e) {
 
 TouchPanner.prototype.onTouchEnd_ = function(e) {
   this.isTouching = false;
+};
+
+// override to dynamically allow/deny user input to control pan/rotation (e.g. based on event target)
+TouchPanner.prototype.canInitiateRotation = function(e) {
+  return true;
 };
 
 module.exports = TouchPanner;
